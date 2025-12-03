@@ -431,44 +431,6 @@ composer lint
 composer lint:fix
 ```
 
-## Migrating from Original T15S Registry
-
-### Before (Original)
-
-```php
-// Old functional approach
-\Required\Traduttore_Registry\add_project(
-    'plugin',
-    'my-plugin',
-    'https://example.com/packages.json'
-);
-```
-
-### After (This Library)
-
-```php
-use TranslationsPress\Updater;
-
-// New object-oriented approach
-Updater::get_instance()->register(
-    'plugin',
-    'my-plugin',
-    'https://example.com/packages.json'
-);
-```
-
-### Key Differences
-
-| Feature | Original | This Library |
-|---------|----------|--------------|
-| PHP Version | 7.1+ | 7.4+ |
-| Pattern | Functional | Object-Oriented (Singleton) |
-| wp.org Override | No | Yes (replace/fallback) |
-| Centralized API | No | Yes |
-| Removable Hooks | No (closures) | Yes (named methods) |
-| Static Caching | No | Yes |
-| Logging | No | Yes (optional) |
-
 ## Contributing
 
 Contributions are welcome! Please ensure your code follows WPCS 3.0 standards and includes appropriate tests.
