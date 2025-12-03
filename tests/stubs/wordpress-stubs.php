@@ -339,4 +339,157 @@ if ( ! function_exists( 'wp_parse_url' ) ) {
 	}
 }
 
+if ( ! function_exists( 'determine_locale' ) ) {
+	/**
+	 * Determines the current locale.
+	 *
+	 * @return string Current locale.
+	 */
+	function determine_locale() {
+		return get_locale();
+	}
+}
+
+if ( ! function_exists( 'current_user_can' ) ) {
+	/**
+	 * Checks if current user has capability.
+	 *
+	 * @param string $capability Capability name.
+	 * @return bool True if user has capability.
+	 */
+	function current_user_can( $capability ) {
+		return true; // For testing, assume user has capability.
+	}
+}
+
+if ( ! function_exists( 'download_url' ) ) {
+	/**
+	 * Downloads a URL to a local temporary file.
+	 *
+	 * @param string $url URL to download.
+	 * @return string|\WP_Error Filename or WP_Error on failure.
+	 */
+	function download_url( $url ) {
+		global $wp_test_download_results;
+
+		if ( isset( $wp_test_download_results[ $url ] ) ) {
+			return $wp_test_download_results[ $url ];
+		}
+
+		return new WP_Error( 'download_failed', 'Mock download failure' );
+	}
+}
+
+if ( ! function_exists( 'unzip_file' ) ) {
+	/**
+	 * Unzips a file to a directory.
+	 *
+	 * @param string $file File path.
+	 * @param string $to   Destination directory.
+	 * @return true|\WP_Error True on success, WP_Error on failure.
+	 */
+	function unzip_file( $file, $to ) {
+		return true; // For testing.
+	}
+}
+
+if ( ! function_exists( 'self_admin_url' ) ) {
+	/**
+	 * Returns admin URL for the current site.
+	 *
+	 * @param string $path Path to append.
+	 * @return string Admin URL.
+	 */
+	function self_admin_url( $path = '' ) {
+		return 'http://example.com/wp-admin/' . ltrim( $path, '/' );
+	}
+}
+
+if ( ! function_exists( 'request_filesystem_credentials' ) ) {
+	/**
+	 * Requests filesystem credentials from the user.
+	 *
+	 * @param string $form_post URL to post to.
+	 * @return bool|array Credentials or false.
+	 */
+	function request_filesystem_credentials( $form_post ) {
+		return true; // For testing.
+	}
+}
+
+if ( ! function_exists( 'WP_Filesystem' ) ) {
+	/**
+	 * Initializes and connects the WordPress Filesystem.
+	 *
+	 * @param array $args Connection args.
+	 * @return bool True on success.
+	 */
+	function WP_Filesystem( $args = array() ) {
+		return true; // For testing.
+	}
+}
+
+if ( ! function_exists( 'wp_get_pomo_file_data' ) ) {
+	/**
+	 * Extracts headers from a PO file.
+	 *
+	 * @param string $po_file Path to PO file.
+	 * @return array Headers.
+	 */
+	function wp_get_pomo_file_data( $po_file ) {
+		return array(
+			'PO-Revision-Date' => '2024-01-01 12:00:00',
+		);
+	}
+}
+
+if ( ! function_exists( 'wp_delete_file' ) ) {
+	/**
+	 * Deletes a file.
+	 *
+	 * @param string $file Path to file.
+	 * @return void
+	 */
+	function wp_delete_file( $file ) {
+		if ( file_exists( $file ) ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.unlink_unlink
+			@unlink( $file );
+		}
+	}
+}
+
+if ( ! defined( 'FS_CHMOD_DIR' ) ) {
+	define( 'FS_CHMOD_DIR', 0755 );
+}
+
+if ( ! defined( 'FS_CHMOD_FILE' ) ) {
+	define( 'FS_CHMOD_FILE', 0644 );
+}
+
+if ( ! defined( 'WP_CONTENT_DIR' ) ) {
+	define( 'WP_CONTENT_DIR', '/var/www/html/wp-content' );
+}
+
+if ( ! defined( 'WP_LANG_DIR' ) ) {
+	define( 'WP_LANG_DIR', WP_CONTENT_DIR . '/languages' );
+}
+
+if ( ! defined( 'ABSPATH' ) ) {
+	define( 'ABSPATH', '/tmp/' );
+}
+
+// Set up a mock global $wp_filesystem to prevent file loading.
+global $wp_filesystem;
+$wp_filesystem = new class {
+	public function mkdir( $path, $chmod = false, $chown = false, $chgrp = false ) {
+		return true;
+	}
+	public function is_dir( $path ) {
+		return true;
+	}
+	public function exists( $path ) {
+		return false;
+	}
+};
+
 // phpcs:enable

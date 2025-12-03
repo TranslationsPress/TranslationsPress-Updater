@@ -97,6 +97,35 @@ Updater::get_instance()->register_plugin(
 );
 ```
 
+### Auto-Install on Activation & Language Change
+
+```php
+use TranslationsPress\Updater;
+
+// Automatically download translations when:
+// - Plugin is activated (auto_install)
+// - User changes site language (install_on_lang_change)
+Updater::get_instance()->register_plugin(
+    'my-plugin',
+    'https://api.translationspress.com/my-plugin/packages.json',
+    [
+        'auto_install'           => true,  // Install on registration/activation
+        'install_on_lang_change' => true,  // Install when site language changes
+    ]
+);
+
+// Manual installation (e.g., in plugin activation hook)
+register_activation_hook( __FILE__, function() {
+    Updater::get_instance()->install_translations( 'plugin', 'my-plugin' );
+} );
+
+// Install for a specific locale
+Updater::get_instance()->install_translations( 'plugin', 'my-plugin', 'fr_FR' );
+
+// Install all translations for all registered projects
+Updater::get_instance()->install_all_translations();
+```
+
 ### Centralized API (Plugin Ecosystem)
 
 ```php

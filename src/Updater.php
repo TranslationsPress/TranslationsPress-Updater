@@ -63,12 +63,28 @@ class Updater {
 	private array $overrides = [];
 
 	/**
+	 * Installer instances for each project.
+	 *
+	 * @since 2.0.0
+	 * @var array<string, Installer>
+	 */
+	private array $installers = [];
+
+	/**
 	 * Whether WordPress hooks have been registered.
 	 *
 	 * @since 2.0.0
 	 * @var bool
 	 */
 	private bool $hooks_registered = false;
+
+	/**
+	 * Whether language change hook is registered.
+	 *
+	 * @since 2.0.0
+	 * @var bool
+	 */
+	private bool $language_hook_registered = false;
 
 	/**
 	 * Logger callback.
@@ -135,6 +151,12 @@ class Updater {
 	 *         'wporg_fallback' => true,
 	 *     ] );
 	 *
+	 * With automatic installation on activation:
+	 *     $updater->register( 'plugin', 'my-plugin', 'https://t15s.com/api/packages.json', [
+	 *         'auto_install'         => true,  // Install on registration.
+	 *         'install_on_lang_change' => true,  // Install when site language changes.
+	 *     ] );
+	 *
 	 * @since 2.0.0
 	 *
 	 * @param string               $type    Project type: 'plugin' or 'theme'.
@@ -143,12 +165,15 @@ class Updater {
 	 * @param array<string, mixed> $options {
 	 *     Optional. Additional options.
 	 *
-	 *     @type bool $is_centralized  Whether the API serves multiple projects. Default false.
-	 *     @type bool $override_wporg  Whether to override WordPress.org translations. Default false.
-	 *     @type bool $wporg_fallback  Whether to fallback to wp.org if T15S fails. Default true.
-	 *                                 Only applies if override_wporg is true.
-	 *     @type int  $cache_expiration Cache expiration in seconds. Default 12 hours.
-	 *     @type int  $timeout          API request timeout in seconds. Default 3.
+	 *     @type bool $is_centralized        Whether the API serves multiple projects. Default false.
+	 *     @type bool $override_wporg        Whether to override WordPress.org translations. Default false.
+	 *     @type bool $wporg_fallback        Whether to fallback to wp.org if T15S fails. Default true.
+	 *                                       Only applies if override_wporg is true.
+	 *     @type bool $auto_install          Whether to download translations immediately. Default false.
+	 *     @type bool $install_on_lang_change Whether to download translations when site language changes.
+	 *                                       Default false.
+	 *     @type int  $cache_expiration      Cache expiration in seconds. Default 12 hours.
+	 *     @type int  $timeout               API request timeout in seconds. Default 3.
 	 * }
 	 * @return Project The registered project instance.
 	 */
@@ -161,11 +186,13 @@ class Updater {
 		$options = wp_parse_args(
 			$options,
 			[
-				'is_centralized'   => false,
-				'override_wporg'   => false,
-				'wporg_fallback'   => true,
-				'cache_expiration' => Cache::DEFAULT_EXPIRATION,
-				'timeout'          => API::DEFAULT_TIMEOUT,
+				'is_centralized'         => false,
+				'override_wporg'         => false,
+				'wporg_fallback'         => true,
+				'auto_install'           => false,
+				'install_on_lang_change' => false,
+				'cache_expiration'       => Cache::DEFAULT_EXPIRATION,
+				'timeout'                => API::DEFAULT_TIMEOUT,
 			]
 		);
 
@@ -194,18 +221,72 @@ class Updater {
 			$this->setup_wporg_override( $project, $options['wporg_fallback'] );
 		}
 
+		// Create installer for this project.
+		$installer                                      = new Installer( $project, $this->logger );
+		$this->installers[ $project->get_identifier() ] = $installer;
+
+		// Register language change hook if needed (only once).
+		if ( $options['install_on_lang_change'] ) {
+			$this->register_language_change_hook();
+		}
+
+		// Auto-install translations if requested.
+		if ( $options['auto_install'] && is_admin() ) {
+			// Schedule for after init to ensure all WP functions are available.
+			add_action(
+				'admin_init',
+				function () use ( $installer ) {
+					$installer->install();
+				},
+				9999
+			);
+		}
+
 		$this->log(
 			sprintf(
-				'Registered %s "%s" with API: %s (centralized: %s, override_wporg: %s)',
+				'Registered %s "%s" with API: %s (centralized: %s, override_wporg: %s, auto_install: %s)',
 				$type,
 				$slug,
 				$api_url,
 				$options['is_centralized'] ? 'yes' : 'no',
-				$options['override_wporg'] ? 'yes' : 'no'
+				$options['override_wporg'] ? 'yes' : 'no',
+				$options['auto_install'] ? 'yes' : 'no'
 			)
 		);
 
 		return $project;
+	}
+
+	/**
+	 * Registers a plugin for translation updates.
+	 *
+	 * Convenience method that calls register() with type 'plugin'.
+	 *
+	 * @since 2.0.0
+	 *
+	 * @param string               $slug    Plugin directory slug.
+	 * @param string               $api_url TranslationsPress API URL.
+	 * @param array<string, mixed> $options Optional. See register() for options.
+	 * @return Project The registered project instance.
+	 */
+	public function register_plugin( string $slug, string $api_url, array $options = [] ): Project {
+		return $this->register( 'plugin', $slug, $api_url, $options );
+	}
+
+	/**
+	 * Registers a theme for translation updates.
+	 *
+	 * Convenience method that calls register() with type 'theme'.
+	 *
+	 * @since 2.0.0
+	 *
+	 * @param string               $slug    Theme directory slug.
+	 * @param string               $api_url TranslationsPress API URL.
+	 * @param array<string, mixed> $options Optional. See register() for options.
+	 * @return Project The registered project instance.
+	 */
+	public function register_theme( string $slug, string $api_url, array $options = [] ): Project {
+		return $this->register( 'theme', $slug, $api_url, $options );
 	}
 
 	/**
@@ -623,5 +704,108 @@ class Updater {
 
 			self::$instance = null;
 		}
+	}
+
+	/**
+	 * Registers the language change hook.
+	 *
+	 * @since 2.0.0
+	 *
+	 * @return void
+	 */
+	private function register_language_change_hook(): void {
+		if ( $this->language_hook_registered ) {
+			return;
+		}
+
+		add_action( 'update_option_WPLANG', [ $this, 'on_language_change' ], 10, 2 );
+
+		$this->language_hook_registered = true;
+	}
+
+	/**
+	 * Handles site language change.
+	 *
+	 * Downloads translations for all registered projects when the site language changes.
+	 *
+	 * @since 2.0.0
+	 *
+	 * @param string $old_value Old language value.
+	 * @param string $new_value New language value.
+	 * @return void
+	 */
+	public function on_language_change( string $old_value, string $new_value ): void {
+		if ( empty( $new_value ) || $old_value === $new_value ) {
+			return;
+		}
+
+		if ( ! current_user_can( 'install_languages' ) ) {
+			return;
+		}
+
+		$this->log( sprintf( 'Site language changed from %s to %s', $old_value, $new_value ) );
+
+		foreach ( $this->installers as $identifier => $installer ) {
+			$this->log( sprintf( 'Installing translations for %s...', $identifier ) );
+			$installer->install( $new_value );
+		}
+	}
+
+	/**
+	 * Installs translations for a specific project.
+	 *
+	 * Can be called manually, e.g., from plugin activation hook.
+	 *
+	 * @since 2.0.0
+	 *
+	 * @param string $type   Project type.
+	 * @param string $slug   Project slug.
+	 * @param string $locale Optional. Specific locale. Default current locale.
+	 * @return bool True on success, false on failure.
+	 */
+	public function install_translations( string $type, string $slug, string $locale = '' ): bool {
+		$identifier = $type . '_' . $slug;
+
+		if ( ! isset( $this->installers[ $identifier ] ) ) {
+			$this->log( sprintf( 'Cannot install translations: project %s not registered', $identifier ), 'error' );
+			return false;
+		}
+
+		return $this->installers[ $identifier ]->install( $locale );
+	}
+
+	/**
+	 * Installs translations for all registered projects.
+	 *
+	 * @since 2.0.0
+	 *
+	 * @param string $locale Optional. Specific locale. Default current locale.
+	 * @return int Number of successful installations.
+	 */
+	public function install_all_translations( string $locale = '' ): int {
+		$count = 0;
+
+		foreach ( $this->installers as $installer ) {
+			if ( $installer->install( $locale ) ) {
+				++$count;
+			}
+		}
+
+		return $count;
+	}
+
+	/**
+	 * Gets the installer for a project.
+	 *
+	 * @since 2.0.0
+	 *
+	 * @param string $type Project type.
+	 * @param string $slug Project slug.
+	 * @return Installer|null Installer instance or null if not found.
+	 */
+	public function get_installer( string $type, string $slug ): ?Installer {
+		$identifier = $type . '_' . $slug;
+
+		return $this->installers[ $identifier ] ?? null;
 	}
 }

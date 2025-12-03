@@ -5,21 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - 2024-XX-XX
+## [2.0.0] - 2024-12-03
 
 ### Added
 - Complete rewrite with modern PHP 7.4+ features
 - PSR-4 autoloading with `TranslationsPress` namespace
 - Singleton pattern via `Updater::get_instance()`
+- Convenience methods `register_plugin()` and `register_theme()`
 - WordPress.org translation override with two modes:
   - `replace`: Block wp.org completely, only use T15S
   - `fallback`: Try T15S first, use wp.org as fallback
 - Centralized API support for plugin ecosystems (`register_addons()`)
+- **Auto-install on activation**: `auto_install` option downloads translations immediately
+- **Language change detection**: `install_on_lang_change` option auto-installs when site language changes
+- `install_translations()` method for manual installation
+- `install_all_translations()` method to install for all registered projects
+- `Installer` class for downloading and installing translation packages
 - Intelligent caching with cleanup protection (prevents rapid cache clearing)
 - Static caching for expensive WordPress functions
 - Optional logging support via `set_logger()`
 - Standalone single-file version for non-Composer projects
-- Comprehensive PHPUnit test suite
+- Mozart integration for automated namespace prefixing (conflict prevention)
+- Comprehensive PHPUnit test suite (60+ tests)
 - Full WPCS 3.0 compliance
 
 ### Changed
