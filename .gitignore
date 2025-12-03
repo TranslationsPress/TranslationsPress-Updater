@@ -1,0 +1,29 @@
+# Dependencies
+/vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PHP
+*.phar
+composer.lock
+
+# Testing
+/coverage/
+.phpunit.result.cache
+.phpunit.cache/
+
+# Build
+/build/
+/dist/
+
+# Mozart output (generated)
+/src/Vendor/

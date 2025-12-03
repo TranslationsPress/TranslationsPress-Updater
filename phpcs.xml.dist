@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<ruleset name="TranslationsPress Updater">
+    <description>Coding standards for TranslationsPress Updater library</description>
+
+    <!-- What to scan -->
+    <file>src</file>
+    <file>standalone</file>
+
+    <!-- Exclude patterns -->
+    <exclude-pattern>/vendor/*</exclude-pattern>
+    <exclude-pattern>/tests/*</exclude-pattern>
+
+    <!-- How to scan -->
+    <arg value="sp"/>
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="extensions" value="php"/>
+    <arg name="parallel" value="8"/>
+
+    <!-- Rules: Check PHP version compatibility -->
+    <config name="testVersion" value="7.4-"/>
+    <rule ref="PHPCompatibilityWP"/>
+
+    <!-- Rules: WordPress Coding Standards -->
+    <config name="minimum_wp_version" value="6.0"/>
+    <rule ref="WordPress">
+        <!-- Allow short array syntax -->
+        <exclude name="Universal.Arrays.DisallowShortArraySyntax"/>
+        <!-- We're a library, not a plugin -->
+        <exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
+        <exclude name="WordPress.Files.FileName.NotHyphenatedLowercase"/>
+    </rule>
+
+    <!-- Verify text domain usage -->
+    <rule ref="WordPress.WP.I18n">
+        <properties>
+            <property name="text_domain" type="array">
+                <element value="translationspress-updater"/>
+            </property>
+        </properties>
+    </rule>
+</ruleset>

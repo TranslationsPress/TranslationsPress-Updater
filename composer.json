@@ -1,0 +1,80 @@
+{
+    "name": "translationspress/updater",
+    "type": "library",
+    "description": "Modern WordPress library for loading translation files from TranslationsPress CDN",
+    "homepage": "https://translationspress.com",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "TranslationsPress Team",
+            "email": "contact@translationspress.com",
+            "homepage": "https://translationspress.com",
+            "role": "Company"
+        }
+    ],
+    "keywords": [
+        "wordpress",
+        "translations",
+        "glotpress",
+        "language-packs",
+        "i18n",
+        "l10n"
+    ],
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6",
+        "wp-coding-standards/wpcs": "^3.0",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+        "phpcompatibility/phpcompatibility-wp": "^2.1",
+        "yoast/phpunit-polyfills": "^2.0",
+        "coenjacobs/mozart": "^0.7"
+    },
+    "autoload": {
+        "psr-4": {
+            "TranslationsPress\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "TranslationsPress\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "lint": "phpcs",
+        "lint:fix": "phpcbf",
+        "test": "phpunit",
+        "test:coverage": "phpunit --coverage-html coverage",
+        "mozart": "mozart compose",
+        "post-install-cmd": [
+            "@mozart"
+        ],
+        "post-update-cmd": [
+            "@mozart"
+        ]
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "2.0-dev"
+        },
+        "mozart": {
+            "dep_namespace": "TranslationsPress\\Vendor\\",
+            "dep_directory": "/src/Vendor/",
+            "classmap_directory": "/src/Vendor/classes/",
+            "classmap_prefix": "T15S_",
+            "packages": [],
+            "excluded_packages": [],
+            "override_autoload": {},
+            "delete_vendor_directories": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
