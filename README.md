@@ -477,13 +477,6 @@ Contributions are welcome! Please ensure your code follows WPCS 3.0 standards an
 
 This project is licensed under the GPL-3.0-or-later License - see the [LICENSE.txt](LICENSE.txt) file for details.
 
-## Credits
-
-Inspired by:
-- [TranslationsPress/t15s-registry](https://github.com/developer-developer/t15s-registry) - Original implementation
-- [GravityForms TranslationsPress Updater](https://github.com/developer-developer/gravityforms-gravityforms) - Centralized API pattern
-- [Polylang PLL_T15S](https://polylang.pro/) - Static caching approach
-
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
