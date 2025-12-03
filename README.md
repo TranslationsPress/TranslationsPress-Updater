@@ -462,7 +462,6 @@ Updater::get_instance()->register(
 | Feature | Original | This Library |
 |---------|----------|--------------|
 | PHP Version | 7.1+ | 7.4+ |
-| Namespace | `Required\Traduttore_Registry` | `TranslationsPress` |
 | Pattern | Functional | Object-Oriented (Singleton) |
 | wp.org Override | No | Yes (replace/fallback) |
 | Centralized API | No | Yes |
