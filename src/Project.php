@@ -79,6 +79,17 @@ class Project {
 	private bool $wporg_fallback;
 
 	/**
+	 * Project version for version-aware translation matching.
+	 *
+	 * When set and V2 API data is available, translations matching
+	 * this specific version will be returned instead of "current".
+	 *
+	 * @since 2.1.0
+	 * @var string
+	 */
+	private string $version = '';
+
+	/**
 	 * Cached installed translations.
 	 *
 	 * @since 2.0.0
@@ -218,7 +229,36 @@ class Project {
 	}
 
 	/**
+	 * Sets the project version for version-aware translation matching.
+	 *
+	 * When set, the updater will prefer translations built for this
+	 * specific version (via packages-v2.json) over the latest version.
+	 *
+	 * @since 2.1.0
+	 *
+	 * @param string $version Semver version string (e.g., '2.1.0').
+	 * @return void
+	 */
+	public function set_version( string $version ): void {
+		$this->version = $version;
+	}
+
+	/**
+	 * Gets the project version.
+	 *
+	 * @since 2.1.0
+	 *
+	 * @return string Project version, or empty string if not set.
+	 */
+	public function get_version(): string {
+		return $this->version;
+	}
+
+	/**
 	 * Gets translations for this project.
+	 *
+	 * If V2 data is available and a project version is set, translations
+	 * will be resolved for the specific version rather than "current".
 	 *
 	 * @since 2.0.0
 	 *
@@ -229,7 +269,88 @@ class Project {
 			return $this->api->get_translations( $this->slug );
 		}
 
-		return $this->api->get_translations();
+		$data = $this->api->get_translations();
+
+		return $this->resolve_versioned_translations( $data );
+	}
+
+	/**
+	 * Resolves version-specific translations from V2 API data.
+	 *
+	 * If the response is V2 format (has api_version=2) and a project version
+	 * is set, builds translations from the matching version in the versions map.
+	 * Falls back to the standard translations array otherwise.
+	 *
+	 * @since 2.1.0
+	 *
+	 * @param array<string, mixed> $data Raw API response data.
+	 * @return array<string, mixed> Translation data with 'translations' key.
+	 */
+	private function resolve_versioned_translations( array $data ): array {
+		// Not V2 format or no version set — return as-is.
+		if (
+			empty( $data['api_version'] )
+			|| 2 !== (int) $data['api_version']
+			|| '' === $this->version
+		) {
+			return $data;
+		}
+
+		$current_version = $data['current_version'] ?? '';
+
+		// If our version matches current, the translations array is already correct.
+		if ( $this->version === $current_version ) {
+			return $data;
+		}
+
+		// Look for our specific version in the versions map.
+		$versions = $data['versions'] ?? [];
+
+		if ( empty( $versions ) || ! isset( $versions[ $this->version ] ) ) {
+			// Requested version not available — fall back to current.
+			return $data;
+		}
+
+		$version_data = $versions[ $this->version ];
+
+		// Build a locale metadata index from the current translations.
+		$locale_meta = [];
+		foreach ( ( $data['translations'] ?? [] ) as $translation ) {
+			if ( isset( $translation['language'] ) ) {
+				$locale_meta[ $translation['language'] ] = $translation;
+			}
+		}
+
+		// Build resolved translations array for the requested version.
+		$resolved = [];
+		foreach ( $version_data as $locale => $info ) {
+			$info = (array) $info;
+
+			if ( isset( $locale_meta[ $locale ] ) ) {
+				// Merge version-specific data into existing locale metadata.
+				$entry            = $locale_meta[ $locale ];
+				$entry['version'] = $this->version;
+				$entry['package'] = $info['package'];
+
+				if ( ! empty( $info['updated'] ) ) {
+					$entry['updated'] = $info['updated'];
+				}
+
+				$resolved[] = $entry;
+			} else {
+				// Minimal entry when locale isn't in current translations.
+				$resolved[] = [
+					'language' => $locale,
+					'version'  => $this->version,
+					'updated'  => $info['updated'] ?? '',
+					'package'  => $info['package'],
+				];
+			}
+		}
+
+		$data['translations'] = $resolved;
+
+		return $data;
 	}
 
 	/**

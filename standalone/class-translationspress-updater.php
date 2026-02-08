@@ -57,7 +57,7 @@ final class TranslationsPress_Updater {
 	 * @since 2.0.0
 	 * @var string
 	 */
-	const VERSION = '2.0.0';
+	const VERSION = '2.1.0';
 
 	/**
 	 * Default cache expiration (12 hours).
@@ -176,6 +176,7 @@ final class TranslationsPress_Updater {
 	 *     @type bool $is_centralized  Whether API serves multiple projects. Default false.
 	 *     @type bool $override_wporg  Whether to override wp.org translations. Default false.
 	 *     @type bool $wporg_fallback  Whether to fallback to wp.org. Default true.
+	 *     @type string $version       Plugin/theme version for V2 version matching. Default ''.
 	 *     @type int  $cache_expiration Cache expiration in seconds. Default 43200.
 	 * }
 	 * @return bool True on success.
@@ -237,6 +238,7 @@ final class TranslationsPress_Updater {
 				'is_centralized'   => false,
 				'override_wporg'   => false,
 				'wporg_fallback'   => true,
+				'version'          => '',
 				'cache_expiration' => self::CACHE_EXPIRATION,
 			)
 		);
@@ -250,6 +252,7 @@ final class TranslationsPress_Updater {
 			'is_centralized'   => (bool) $options['is_centralized'],
 			'override_wporg'   => (bool) $options['override_wporg'],
 			'wporg_fallback'   => (bool) $options['wporg_fallback'],
+			'version'          => (string) $options['version'],
 			'cache_expiration' => (int) $options['cache_expiration'],
 		);
 
@@ -570,6 +573,10 @@ final class TranslationsPress_Updater {
 	/**
 	 * Gets translations for a project.
 	 *
+	 * Tries V2 API first (packages-v2.json) for non-centralized projects,
+	 * then falls back to V1 (packages.json). When V2 is available and a
+	 * project version is set, resolves version-specific translations.
+	 *
 	 * @since 2.0.0
 	 *
 	 * @param string $identifier Project identifier.
@@ -579,7 +586,24 @@ final class TranslationsPress_Updater {
 		$project = $this->projects[ $identifier ];
 		$api_url = $project['api_url'];
 
-		$data = $this->fetch_api( $api_url, $project['cache_expiration'] );
+		// Try V2 first for non-centralized APIs.
+		$data = null;
+		if ( ! $project['is_centralized'] ) {
+			$v2_url = $this->get_v2_url( $api_url );
+
+			if ( '' !== $v2_url ) {
+				$v2_data = $this->fetch_api( $v2_url, $project['cache_expiration'] );
+
+				if ( ! empty( $v2_data ) && isset( $v2_data['api_version'] ) && 2 === (int) $v2_data['api_version'] ) {
+					$data = $v2_data;
+				}
+			}
+		}
+
+		// Fallback to V1.
+		if ( null === $data ) {
+			$data = $this->fetch_api( $api_url, $project['cache_expiration'] );
+		}
 
 		if ( empty( $data ) ) {
 			return array();
@@ -602,12 +626,100 @@ final class TranslationsPress_Updater {
 			return array();
 		}
 
-		// Single project API.
+		// Resolve versioned translations for V2 data.
+		if ( isset( $data['api_version'] ) && 2 === (int) $data['api_version'] && '' !== $project['version'] ) {
+			return $this->resolve_versioned_translations( $data, $project['version'] );
+		}
+
+		// Single project API (V1).
 		if ( isset( $data['translations'] ) ) {
 			return $data['translations'];
 		}
 
 		return array();
+	}
+
+	/**
+	 * Resolves version-specific translations from V2 API data.
+	 *
+	 * @since 2.1.0
+	 *
+	 * @param array  $data    V2 API response data.
+	 * @param string $version Requested version.
+	 * @return array Translations array.
+	 */
+	private function resolve_versioned_translations( $data, $version ) {
+		$current_version = isset( $data['current_version'] ) ? $data['current_version'] : '';
+
+		// If our version matches current, translations are already correct.
+		if ( $version === $current_version ) {
+			return isset( $data['translations'] ) ? $data['translations'] : array();
+		}
+
+		// Look for our version in the versions map.
+		$versions = isset( $data['versions'] ) ? $data['versions'] : array();
+
+		if ( empty( $versions ) || ! isset( $versions[ $version ] ) ) {
+			// Requested version not available, fall back to current.
+			return isset( $data['translations'] ) ? $data['translations'] : array();
+		}
+
+		$version_data = $versions[ $version ];
+
+		// Build locale metadata index from current translations.
+		$locale_meta = array();
+		if ( isset( $data['translations'] ) ) {
+			foreach ( $data['translations'] as $translation ) {
+				if ( isset( $translation['language'] ) ) {
+					$locale_meta[ $translation['language'] ] = $translation;
+				}
+			}
+		}
+
+		// Build resolved translations for the requested version.
+		$resolved = array();
+		foreach ( $version_data as $locale => $info ) {
+			$info = (array) $info;
+
+			if ( isset( $locale_meta[ $locale ] ) ) {
+				$entry            = $locale_meta[ $locale ];
+				$entry['version'] = $version;
+				$entry['package'] = $info['package'];
+
+				if ( ! empty( $info['updated'] ) ) {
+					$entry['updated'] = $info['updated'];
+				}
+
+				$resolved[] = $entry;
+			} else {
+				$resolved[] = array(
+					'language' => $locale,
+					'version'  => $version,
+					'updated'  => isset( $info['updated'] ) ? $info['updated'] : '',
+					'package'  => $info['package'],
+				);
+			}
+		}
+
+		return $resolved;
+	}
+
+	/**
+	 * Gets the V2 API URL from a V1 URL.
+	 *
+	 * @since 2.1.0
+	 *
+	 * @param string $api_url V1 API URL.
+	 * @return string V2 URL or empty string.
+	 */
+	private function get_v2_url( $api_url ) {
+		$suffix = '/packages.json';
+
+		if ( substr( $api_url, -strlen( $suffix ) ) === $suffix ) {
+			return substr( $api_url, 0, -strlen( $suffix ) ) . '/packages-v2.json';
+		}
+
+		return '';
 	}
 
 	/**

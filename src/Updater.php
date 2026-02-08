@@ -28,7 +28,7 @@ class Updater {
 	 * @since 2.0.0
 	 * @var string
 	 */
-	public const VERSION = '2.0.0';
+	public const VERSION = '2.1.0';
 
 	/**
 	 * Singleton instance.
@@ -169,6 +169,9 @@ class Updater {
 	 *     @type bool $override_wporg        Whether to override WordPress.org translations. Default false.
 	 *     @type bool $wporg_fallback        Whether to fallback to wp.org if T15S fails. Default true.
 	 *                                       Only applies if override_wporg is true.
+	 *     @type string $version             Plugin/theme version for version-aware translation matching.
+	 *                                       When set and V2 API is available, translations matching
+	 *                                       this specific version are preferred. Default ''.
 	 *     @type bool $auto_install          Whether to download translations immediately. Default false.
 	 *     @type bool $install_on_lang_change Whether to download translations when site language changes.
 	 *                                       Default false.
@@ -189,6 +192,7 @@ class Updater {
 				'is_centralized'         => false,
 				'override_wporg'         => false,
 				'wporg_fallback'         => true,
+				'version'                => '',
 				'auto_install'           => false,
 				'install_on_lang_change' => false,
 				'cache_expiration'       => Cache::DEFAULT_EXPIRATION,
@@ -212,6 +216,11 @@ class Updater {
 			(bool) $options['override_wporg'],
 			(bool) $options['wporg_fallback']
 		);
+
+		// Set version for version-aware translation matching (V2 API).
+		if ( ! empty( $options['version'] ) ) {
+			$project->set_version( (string) $options['version'] );
+		}
 
 		// Store project.
 		$this->projects[ $project->get_identifier() ] = $project;

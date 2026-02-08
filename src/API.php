@@ -63,6 +63,14 @@ class API {
 	private int $timeout;
 
 	/**
+	 * Whether V2 API was successfully resolved.
+	 *
+	 * @since 2.1.0
+	 * @var bool|null Null = not yet tried, true = V2 available, false = V1 only.
+	 */
+	private ?bool $v2_supported = null;
+
+	/**
 	 * Logger callback.
 	 *
 	 * @since 2.0.0
@@ -175,15 +183,63 @@ class API {
 	/**
 	 * Fetches translation data from the API.
 	 *
+	 * For non-centralized APIs, tries packages-v2.json first for version-aware
+	 * translation matching, then falls back to the original packages.json URL.
+	 *
 	 * @since 2.0.0
 	 *
 	 * @return array<string, mixed> Decoded JSON response or empty array on failure.
 	 */
 	private function fetch(): array {
-		$this->log( sprintf( 'Fetching translations from: %s', $this->api_url ) );
+		// Try V2 first for non-centralized APIs.
+		if ( ! $this->is_centralized && null === $this->v2_supported ) {
+			$v2_url = $this->get_v2_url();
+
+			if ( '' !== $v2_url ) {
+				$this->log( sprintf( 'Trying V2 API: %s', $v2_url ) );
+
+				$v2_data = $this->fetch_url( $v2_url );
+
+				if ( ! empty( $v2_data ) && isset( $v2_data['api_version'] ) && 2 === (int) $v2_data['api_version'] ) {
+					$this->v2_supported = true;
+					$this->log( 'V2 API available, using versioned translations' );
+					return $v2_data;
+				}
+
+				$this->v2_supported = false;
+				$this->log( 'V2 API not available, falling back to V1' );
+			}
+		}
+
+		// V2 already confirmed available on a previous fetch.
+		if ( true === $this->v2_supported && ! $this->is_centralized ) {
+			$v2_url  = $this->get_v2_url();
+			$v2_data = '' !== $v2_url ? $this->fetch_url( $v2_url ) : [];
+
+			if ( ! empty( $v2_data ) ) {
+				return $v2_data;
+			}
+
+			// V2 failed this time, fall through to V1.
+			$this->log( 'V2 fetch failed, falling back to V1' );
+		}
+
+		return $this->fetch_url( $this->api_url );
+	}
+
+	/**
+	 * Fetches JSON data from a URL.
+	 *
+	 * @since 2.1.0
+	 *
+	 * @param string $url URL to fetch.
+	 * @return array<string, mixed> Decoded JSON response or empty array on failure.
+	 */
+	private function fetch_url( string $url ): array {
+		$this->log( sprintf( 'Fetching translations from: %s', $url ) );
 
 		$response = wp_remote_get(
-			$this->api_url,
+			$url,
 			[
 				'timeout' => $this->timeout,
 				'headers' => [
@@ -243,6 +299,34 @@ class API {
 		}
 
 		return $this->cache->set( $cache_key, $data );
+	}
+
+	/**
+	 * Gets the V2 API URL by replacing packages.json with packages-v2.json.
+	 *
+	 * @since 2.1.0
+	 *
+	 * @return string V2 URL, or empty string if URL cannot be transformed.
+	 */
+	private function get_v2_url(): string {
+		$suffix = '/packages.json';
+
+		if ( substr( $this->api_url, -strlen( $suffix ) ) === $suffix ) {
+			return substr( $this->api_url, 0, -strlen( $suffix ) ) . '/packages-v2.json';
+		}
+
+		return '';
+	}
+
+	/**
+	 * Checks whether the API responded with V2 format.
+	 *
+	 * @since 2.1.0
+	 *
+	 * @return bool True if V2 is supported.
+	 */
+	public function is_v2(): bool {
+		return true === $this->v2_supported;
 	}
 
 	/**
