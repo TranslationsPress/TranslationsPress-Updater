@@ -332,6 +332,9 @@ class Installer {
 
 		$this->installed[] = $locale;
 
+		// Clear merged JSON cache so newly extracted merged files are picked up.
+		MergedJsonLoader::get_instance()->clear_cache();
+
 		$this->log(
 			sprintf(
 				'Successfully installed %s translation for %s',

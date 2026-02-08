@@ -28,7 +28,7 @@ class Updater {
 	 * @since 2.0.0
 	 * @var string
 	 */
-	public const VERSION = '2.1.0';
+	public const VERSION = '2.2.0';
 
 	/**
 	 * Singleton instance.
@@ -175,6 +175,11 @@ class Updater {
 	 *     @type bool $auto_install          Whether to download translations immediately. Default false.
 	 *     @type bool $install_on_lang_change Whether to download translations when site language changes.
 	 *                                       Default false.
+	 *     @type bool $merged_json           Whether to enable merged JSON script translations.
+	 *                                       When true (default), a single merged JSON file is served for
+	 *                                       all JS script handles via `pre_load_script_translations`,
+	 *                                       instead of loading one file per script. Requires LP ZIPs
+	 *                                       that include a `{slug}-{locale}-merged.json` file.
 	 *     @type int  $cache_expiration      Cache expiration in seconds. Default 12 hours.
 	 *     @type int  $timeout               API request timeout in seconds. Default 3.
 	 * }
@@ -195,6 +200,7 @@ class Updater {
 				'version'                => '',
 				'auto_install'           => false,
 				'install_on_lang_change' => false,
+				'merged_json'            => true,
 				'cache_expiration'       => Cache::DEFAULT_EXPIRATION,
 				'timeout'                => API::DEFAULT_TIMEOUT,
 			]
@@ -233,6 +239,11 @@ class Updater {
 		// Create installer for this project.
 		$installer                                      = new Installer( $project, $this->logger );
 		$this->installers[ $project->get_identifier() ] = $installer;
+
+		// Register merged JSON loader for this textdomain (opt-out via 'merged_json' => false).
+		if ( $options['merged_json'] ) {
+			MergedJsonLoader::get_instance()->register( $slug, $type );
+		}
 
 		// Register language change hook if needed (only once).
 		if ( $options['install_on_lang_change'] ) {
@@ -631,7 +642,11 @@ class Updater {
 			unset( $this->overrides[ $identifier ] );
 		}
 
+		// Unregister from merged JSON loader.
+		MergedJsonLoader::get_instance()->unregister( $slug );
+
 		unset( $this->projects[ $identifier ] );
+		unset( $this->installers[ $identifier ] );
 
 		$this->log( sprintf( 'Unregistered %s "%s"', $type, $slug ) );
 
