@@ -6,7 +6,7 @@
  * Simply include this file and call TranslationsPress_Updater::register().
  *
  * @package TranslationsPress\Updater
- * @version 2.0.0
+ * @version 2.0.1
  * @license GPL-3.0-or-later
  *
  * @example
@@ -37,10 +37,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-// Prevent multiple inclusions.
-if ( class_exists( 'TranslationsPress_Updater' ) ) {
-	return;
-}
+// Prevent multiple declarations when several active plugins each bundle their
+// own copy of this standalone file. A `return` guard is NOT enough: a parentless
+// top-level class is early-bound at compile time (before the guard runs), so two
+// copies would fatally collide. A conditional class declaration is bound at
+// runtime, after the class_exists() check, which makes it safe.
+if ( ! class_exists( 'TranslationsPress_Updater' ) ) {
 
 /**
  * TranslationsPress Updater class.
@@ -235,25 +237,29 @@ final class TranslationsPress_Updater {
 		$options = wp_parse_args(
 			$options,
 			array(
-				'is_centralized'   => false,
-				'override_wporg'   => false,
-				'wporg_fallback'   => true,
-				'version'          => '',
-				'cache_expiration' => self::CACHE_EXPIRATION,
+				'is_centralized'         => false,
+				'override_wporg'         => false,
+				'wporg_fallback'         => true,
+				'version'                => '',
+				'cache_expiration'       => self::CACHE_EXPIRATION,
+				'auto_install'           => false,
+				'install_on_lang_change' => false,
 			)
 		);
 
 		$identifier = $type . '_' . $slug;
 
 		$this->projects[ $identifier ] = array(
-			'type'             => $type,
-			'slug'             => $slug,
-			'api_url'          => $api_url,
-			'is_centralized'   => (bool) $options['is_centralized'],
-			'override_wporg'   => (bool) $options['override_wporg'],
-			'wporg_fallback'   => (bool) $options['wporg_fallback'],
-			'version'          => (string) $options['version'],
-			'cache_expiration' => (int) $options['cache_expiration'],
+			'type'                   => $type,
+			'slug'                   => $slug,
+			'api_url'                => $api_url,
+			'is_centralized'         => (bool) $options['is_centralized'],
+			'override_wporg'         => (bool) $options['override_wporg'],
+			'wporg_fallback'         => (bool) $options['wporg_fallback'],
+			'version'                => (string) $options['version'],
+			'cache_expiration'       => (int) $options['cache_expiration'],
+			'auto_install'           => (bool) $options['auto_install'],
+			'install_on_lang_change' => (bool) $options['install_on_lang_change'],
 		);
 
 		if ( $options['override_wporg'] ) {
@@ -293,7 +299,112 @@ final class TranslationsPress_Updater {
 		add_action( 'set_site_transient_update_themes', array( $this, 'clean_caches' ) );
 		add_action( 'delete_site_transient_update_themes', array( $this, 'clean_caches' ) );
 
+		// Auto-install support (opt-in per project).
+		add_action( 'admin_init', array( $this, 'maybe_auto_install' ) );
+		add_action( 'update_option_WPLANG', array( $this, 'handle_locale_change' ) );
+
 		$this->hooks_registered = true;
+	}
+
+	/**
+	 * Installs available translation packs immediately for projects opting
+	 * into auto_install. Throttled per project so it does not run on every
+	 * request; the throttle is reset on a site language change.
+	 *
+	 * @since 2.0.1
+	 *
+	 * @return void
+	 */
+	public function maybe_auto_install() {
+		foreach ( $this->projects as $identifier => $project ) {
+			if ( empty( $project['auto_install'] ) ) {
+				continue;
+			}
+
+			$guard = 't15s_autoinstall_' . md5( $identifier );
+			if ( get_site_transient( $guard ) ) {
+				continue;
+			}
+
+			// Mark attempted up-front to avoid hammering on repeated admin loads.
+			set_site_transient( $guard, 1, (int) $project['cache_expiration'] );
+
+			$this->install_translations( $identifier );
+		}
+	}
+
+	/**
+	 * Re-installs translations when the site language changes, for projects
+	 * opting into install_on_lang_change.
+	 *
+	 * @since 2.0.1
+	 *
+	 * @return void
+	 */
+	public function handle_locale_change() {
+		// The locale changed: drop cached language lookups so the new locale
+		// is considered.
+		$this->available_languages    = null;
+		$this->installed_translations = null;
+
+		foreach ( $this->projects as $identifier => $project ) {
+			if ( empty( $project['install_on_lang_change'] ) ) {
+				continue;
+			}
+
+			// Reset the auto-install throttle so the new locale is fetched.
+			delete_site_transient( 't15s_autoinstall_' . md5( $identifier ) );
+
+			$this->install_translations( $identifier );
+		}
+	}
+
+	/**
+	 * Downloads and installs the available translation packs for a project
+	 * (or every registered project when no identifier is given).
+	 *
+	 * @since 2.0.1
+	 *
+	 * @param string|null $identifier Project identifier, or null for all.
+	 * @return mixed Upgrader result, or false when there is nothing to install.
+	 */
+	public function install_translations( $identifier = null ) {
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/misc.php';
+		require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+
+		$identifiers = ( null === $identifier ) ? array_keys( $this->projects ) : array( $identifier );
+
+		$language_updates = array();
+		foreach ( $identifiers as $id ) {
+			if ( ! isset( $this->projects[ $id ] ) ) {
+				continue;
+			}
+
+			foreach ( $this->get_translation_updates( $id ) as $update ) {
+				$language_updates[] = (object) $update;
+			}
+		}
+
+		if ( empty( $language_updates ) ) {
+			return false;
+		}
+
+		// Make sure the destination directory exists.
+		if ( ! is_dir( WP_LANG_DIR . '/plugins' ) ) {
+			wp_mkdir_p( WP_LANG_DIR . '/plugins' );
+		}
+		if ( ! is_dir( WP_LANG_DIR . '/themes' ) ) {
+			wp_mkdir_p( WP_LANG_DIR . '/themes' );
+		}
+
+		$skin     = new Automatic_Upgrader_Skin();
+		$upgrader = new Language_Pack_Upgrader( $skin );
+		$result   = $upgrader->bulk_upgrade( $language_updates, array( 'clear_update_cache' => false ) );
+
+		$this->log( sprintf( 'install_translations: processed %d pack(s)', count( $language_updates ) ) );
+
+		return $result;
 	}
 
 	/**
@@ -391,18 +502,33 @@ final class TranslationsPress_Updater {
 	 * @return mixed Filtered preempt value.
 	 */
 	private function block_wporg_request( $preempt, $args, $url, $type, $slug ) {
-		// Only block translations API requests.
-		if ( false === strpos( $url, 'api.wordpress.org/translations/' ) ) {
+		// Only the wp.org translations API for this project type. The bulk
+		// plugin/theme update check lives on a different endpoint
+		// (api.wordpress.org/plugins/update-check/), so it is never affected.
+		if ( false === strpos( $url, 'api.wordpress.org/translations/' . $type . 's/' ) ) {
 			return $preempt;
 		}
 
-		// Check if URL contains our slug.
-		$pattern = sprintf( '/%ss/[^/]+/%s/', $type, preg_quote( $slug, '/' ) );
-		if ( ! preg_match( $pattern, $url ) ) {
+		// wp.org carries the requested slug in the POST body, not the URL path.
+		// Match it as a discrete value so a different plugin whose name contains
+		// ours (e.g. "akismet" vs "akismet-pro") is not blocked by accident.
+		$body = isset( $args['body'] ) ? $args['body'] : '';
+		if ( is_array( $body ) ) {
+			$body = wp_json_encode( $body );
+		}
+		if ( ! is_string( $body ) || '' === $body ) {
 			return $preempt;
 		}
 
-		$this->log( sprintf( 'Blocking wp.org request for %s_%s: %s', $type, $slug, $url ) );
+		$quoted  = preg_quote( $slug, '#' );
+		$is_ours = preg_match( '#"' . $quoted . '"#', $body )
+			|| preg_match( '#(?:^|[?&])slug=' . $quoted . '(?:$|&)#', $body );
+
+		if ( ! $is_ours ) {
+			return $preempt;
+		}
+
+		$this->log( sprintf( 'Blocking wp.org translations for %s_%s', $type, $slug ) );
 
 		// Return empty response.
 		return array(
@@ -882,4 +1008,6 @@ final class TranslationsPress_Updater {
 			call_user_func( $this->logger, '[T15S] ' . $message );
 		}
 	}
+}
+
 }
