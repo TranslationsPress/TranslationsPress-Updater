@@ -269,7 +269,7 @@ class WordPressOrgOverride {
 		// URL format: https://api.wordpress.org/translations/plugins/1.0/?slug=xxx.
 		$slug = $this->project->get_slug();
 
-		// Check query string.
+		// Check query string for an exact slug match.
 		$query_string = wp_parse_url( $url, PHP_URL_QUERY );
 		if ( $query_string ) {
 			parse_str( $query_string, $query_args );
@@ -278,8 +278,11 @@ class WordPressOrgOverride {
 			}
 		}
 
-		// Check path for slug.
-		if ( false !== strpos( $url, 'slug=' . $slug ) ) {
+		// Fallback: match slug=<slug> as a discrete value. A plain
+		// strpos( 'slug=' . $slug ) would also match a longer slug that starts
+		// with ours (e.g. blocking "akismet-pro" when our slug is "akismet"), so
+		// require the value to be terminated by end-of-string or a separator.
+		if ( preg_match( '#(?:^|[?&])slug=' . preg_quote( $slug, '#' ) . '(?:$|&)#', $url ) ) {
 			return true;
 		}
 
