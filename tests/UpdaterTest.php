@@ -66,7 +66,7 @@ class UpdaterTest extends TestCase {
 	 * @covers ::VERSION
 	 */
 	public function test_version(): void {
-		$this->assertSame( '2.0.0', Updater::VERSION );
+		$this->assertSame( '2.2.0', Updater::VERSION );
 	}
 
 	/**
